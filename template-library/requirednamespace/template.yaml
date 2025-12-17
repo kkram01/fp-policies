@@ -1,0 +1,45 @@
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequirednamespace
+  namespace: gator-local
+  annotations:
+    metadata.gatekeeper.sh/title: "Required Namespace"
+    metadata.gatekeeper.sh/version: 1.0.1
+    description: "Requires all namespaced resources to be in a specific namespace."
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequiredNamespace
+      validation:
+        # This schema defines the parameters that can be passed to the constraint.
+        # In this case, we expect a single parameter: 'namespace'.
+        openAPIV3Schema:
+          type: object
+          properties:
+            namespace:
+              type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequirednamespace
+
+        # The 'violation' rule is the entry point for Gatekeeper.
+        # It will be evaluated for each resource admission request.
+        violation[{"msg": msg}] {
+          # This policy applies only to namespaced resources.
+          # We identify them by checking for the existence of the metadata.namespace field.
+          # If the field does not exist (i.e., it's a cluster-scoped resource), this rule will not match,
+          # and no violation will be generated.
+          provided_namespace := input.review.object.metadata.namespace
+          
+          # Get the required namespace from the constraint's parameters.
+          required_namespace := input.parameters.namespace
+
+          # If the provided namespace does not match the required one, we have a violation.
+          provided_namespace != required_namespace
+          
+          # This is the error message that will be returned to the user.
+          msg := sprintf("Resource must be in the '%v' namespace, but it was created in '%v'", [required_namespace, provided_namespace])
+        }
